@@ -1,8 +1,7 @@
-from threading import Thread
-from flask import Flask
-
 import os
 import logging
+from threading import Thread
+from flask import Flask
 from openai import AsyncOpenAI
 from telegram import Update
 from telegram.ext import (
@@ -14,6 +13,8 @@ from telegram.ext import (
 )
 
 # -----------------------------
+# RENDER KEEP-ALIVE WEB SERVER
+# -----------------------------
 server = Flask(__name__)
 
 @server.route('/')
@@ -24,17 +25,9 @@ def run_web():
     port = int(os.environ.get("PORT", 8080))
     server.run(host="0.0.0.0", port=port)
 
-
-@server.route('/')
-def home():
-    return "Bot is Live!"
-
-def run_web():
-    port = int(os.environ.get("PORT", 8080))
-    server.run(host="0.0.0.0", port=port)
-
 # -----------------------------
-
+# SETTINGS & CLIENT SETUP
+# -----------------------------
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
@@ -54,17 +47,7 @@ logging.basicConfig(
 # -----------------------------
 # START COMMAND
 # -----------------------------
-
-server = Flask(__name__)
-
-@server.route('/')
-def home():
-    return "Bot is Live!"
-
-def run_web():
-    port = int(os.environ.get("PORT", 8080))
-    server.run(host="0.0.0.0", port=port)
-(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = (
         "નમસ્તે! 👋\n\n"
         "વર્તમાન પ્રવાહ AI Bot માં આપનું સ્વાગત છે. 🇮🇳\n\n"
@@ -76,14 +59,11 @@ def run_web():
         "• RBIના તાજેતરના સમાચાર આપો\n\n"
         "હું શક્ય હોય ત્યાં તાજી માહિતી શોધીને જવાબ આપીશ. 🔎"
     )
-
     await update.message.reply_text(message)
-
 
 # -----------------------------
 # HELP COMMAND
 # -----------------------------
-
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = (
         "📚 મદદ\n\n"
@@ -94,28 +74,22 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👉 UPSC માટે આજના Current Affairs આપો\n"
         "👉 ભારતના આજના રાષ્ટ્રીય સમાચાર આપો\n"
     )
-
     await update.message.reply_text(message)
-
 
 # -----------------------------
 # AI RESPONSE
 # -----------------------------
-
 async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-
     question = update.message.text.strip()
 
     if not question:
         return
 
-    # Loading message
     loading = await update.message.reply_text(
         "🔎 માહિતી શોધી રહ્યો છું... થોડી ક્ષણ રાહ જુઓ."
     )
 
     try:
-
         instructions = """
 તમે 'વર્તમાન પ્રવાહ' નામના ગુજરાતી Current Affairs Telegram Bot છો.
 
@@ -157,48 +131,39 @@ Current Affairs પ્રશ્ન હોય તો શક્ય હોય ત�
         if not answer:
             answer = "માફ કરશો, હાલમાં જવાબ મેળવી શકાયો નથી."
 
-        # Telegram message limit protection
         max_length = 4000
-
         if len(answer) <= max_length:
             await loading.edit_text(answer)
         else:
             await loading.edit_text(answer[:max_length])
-
             remaining = answer[max_length:]
-
             while remaining:
                 chunk = remaining[:4000]
                 remaining = remaining[4000:]
                 await update.message.reply_text(chunk)
 
     except Exception as e:
-
         logging.exception("Error while processing question")
-
         await loading.edit_text(
             "❌ હાલમાં જવાબ મેળવવામાં સમસ્યા આવી છે.\n\n"
             "થોડીવાર પછી ફરી પ્રયાસ કરો."
         )
 
-
 # -----------------------------
 # ERROR HANDLER
 # -----------------------------
-
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-
     logging.error(
         "Exception while handling update:",
         exc_info=context.error
     )
 
-
 # -----------------------------
 # MAIN
 # -----------------------------
-
 def main():
+    # Render માટે બેકગ્રાઉન્ડમાં વેબ સર્વર રન કરવું
+    Thread(target=run_web).start()
 
     application = (
         Application.builder()
@@ -206,15 +171,8 @@ def main():
         .build()
     )
 
-    application.add_handler(
-        CommandHandler("start", start)
-    )
-
-    application.add_handler(
-        CommandHandler("help", help_command)
-    )
-    Thread(target=run_web).start()
-
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -229,7 +187,6 @@ def main():
     application.run_polling(
         allowed_updates=Update.ALL_TYPES
     )
-
 
 if __name__ == "__main__":
     main()

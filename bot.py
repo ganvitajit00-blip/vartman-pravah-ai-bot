@@ -4,6 +4,7 @@ from threading import Thread
 
 from flask import Flask
 from openai import AsyncOpenAI
+
 from telegram import Update
 from telegram.ext import (
     Application,
@@ -27,27 +28,29 @@ def home():
 
 def run_web():
     port = int(os.environ.get("PORT", 8080))
-    server.run(host="0.0.0.0", port=port)
+    server.run(
+        host="0.0.0.0",
+        port=port
+    )
 
 
 # =========================================================
-# ENVIRONMENT VARIABLES
+# SETTINGS
 # =========================================================
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
+
 if not TELEGRAM_BOT_TOKEN:
     raise RuntimeError("TELEGRAM_BOT_TOKEN is missing")
+
 
 if not OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY is missing")
 
 
-# =========================================================
-# OPENAI CLIENT
-# =========================================================
-
+# OpenAI client
 client = AsyncOpenAI(
     api_key=OPENAI_API_KEY
 )
@@ -58,15 +61,15 @@ client = AsyncOpenAI(
 # =========================================================
 
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
 logger = logging.getLogger(__name__)
 
 
 # =========================================================
-# /START
+# START
 # =========================================================
 
 async def start(
@@ -77,19 +80,22 @@ async def start(
     message = (
         "નમસ્તે! 👋\n\n"
         "🇮🇳 વર્તમાન પ્રવાહ AI Bot માં આપનું સ્વાગત છે.\n\n"
-        "તમે Current Affairs અથવા સામાન્ય પ્રશ્નો પૂછી શકો છો.\n\n"
+        "તમે મને Current Affairs, General Knowledge "
+        "અથવા કોઈપણ સામાન્ય પ્રશ્ન પૂછી શકો છો.\n\n"
         "ઉદાહરણ:\n"
         "• આજના Current Affairs આપો\n"
         "• ગુજરાતના આજના સમાચાર આપો\n"
         "• ભારતના આજના મહત્વના સમાચાર આપો\n"
         "• RBIના તાજેતરના સમાચાર આપો\n"
+        "• UPSC માટે Current Affairs આપો\n\n"
+        "તમારો પ્રશ્ન મોકલો. 🔎"
     )
 
     await update.message.reply_text(message)
 
 
 # =========================================================
-# /HELP
+# HELP
 # =========================================================
 
 async def help_command(
@@ -103,15 +109,15 @@ async def help_command(
         "ઉદાહરણ:\n"
         "👉 આજના 10 Current Affairs આપો\n"
         "👉 ગુજરાતના આજના મહત્વના સમાચાર આપો\n"
-        "👉 UPSC માટે Current Affairs આપો\n"
         "👉 ભારતના રાષ્ટ્રીય સમાચાર આપો\n"
+        "👉 UPSC માટે Current Affairs આપો\n"
     )
 
     await update.message.reply_text(message)
 
 
 # =========================================================
-# AI ANSWER
+# AI RESPONSE
 # =========================================================
 
 async def answer_question(
@@ -119,7 +125,10 @@ async def answer_question(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not update.message or not update.message.text:
+    if not update.message:
+        return
+
+    if not update.message.text:
         return
 
     question = update.message.text.strip()
@@ -127,38 +136,76 @@ async def answer_question(
     if not question:
         return
 
+    # Loading message
     loading = await update.message.reply_text(
-        "🔎 જવાબ તૈયાર કરી રહ્યો છું... થોડી ક્ષણ રાહ જુઓ."
+        "🔎 AI જવાબ તૈયાર કરી રહ્યો છું...\n"
+        "થોડી ક્ષણ રાહ જુઓ."
     )
 
     try:
 
         system_prompt = """
-તમે 'વર્તમાન પ્રવાહ' નામના ગુજરાતી AI Bot છો.
+તમે 'વર્તમાન પ્રવાહ AI' નામના ગુજરાતી
+Current Affairs અને General Knowledge Bot છો.
 
 તમારું કામ:
-1. ગુજરાતી ભાષામાં જવાબ આપવો.
+1. ગુજરાતીમાં જવાબ આપવો.
 2. જવાબ સરળ અને સ્પષ્ટ રાખવો.
 3. પરીક્ષાર્થીઓ માટે ઉપયોગી માહિતી આપવી.
-4. Current Affairs પૂછવામાં આવે ત્યારે મુદ્દાસર જવાબ આપવો.
-5. માહિતી વિશે ખાતરી ન હોય તો ખોટી માહિતી બનાવવી નહીં.
-6. જરૂરી હોય ત્યારે તારીખ અને વર્ષ સ્પષ્ટ લખવું.
+4. પ્રશ્ન Current Affairsનો હોય તો શક્ય તેટલી
+   સચોટ અને સ્પષ્ટ માહિતી આપવી.
+5. જરૂરી હોય ત્યારે મુદ્દાવાર જવાબ આપવો.
+6. માહિતી ખાતરીપૂર્વક ઉપલબ્ધ ન હોય તો ખોટી માહિતી
+   બનાવવી નહીં.
 """
 
-        response = await client.responses.create(
-            model="gpt-5.6-luna",
-            instructions=system_prompt,
-            input=question,
+        logger.info(
+            "Sending question to OpenAI: %s",
+            question
         )
 
-        answer = response.output_text
+        # -------------------------------------------------
+        # OPENAI REQUEST
+        # -------------------------------------------------
+
+        response = await client.chat.completions.create(
+
+            model="gpt-4o-mini",
+
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": question
+                }
+            ],
+
+            temperature=0.3,
+
+            max_tokens=1500
+        )
+
+        # -------------------------------------------------
+        # GET ANSWER
+        # -------------------------------------------------
+
+        answer = response.choices[0].message.content
+
+        logger.info("OpenAI response received successfully.")
 
         if not answer:
+
             answer = (
-                "માફ કરશો, હાલમાં જવાબ મેળવી શકાયો નથી."
+                "માફ કરશો, હાલમાં AI તરફથી "
+                "જવાબ મળ્યો નથી."
             )
 
-        # Telegram message limit
+        answer = answer.strip()
+
+        # Telegram message limit handling
         max_length = 4000
 
         if len(answer) <= max_length:
@@ -176,6 +223,7 @@ async def answer_question(
             while remaining:
 
                 chunk = remaining[:4000]
+
                 remaining = remaining[4000:]
 
                 await update.message.reply_text(
@@ -184,14 +232,25 @@ async def answer_question(
 
     except Exception as e:
 
+        # -------------------------------------------------
+        # IMPORTANT:
+        # ACTUAL ERROR WILL BE SHOWN IN TELEGRAM
+        # -------------------------------------------------
+
         logger.exception(
-            "OpenAI API Error"
+            "OPENAI ERROR: %s",
+            str(e)
         )
 
-        # User-friendly message
+        error_text = str(e)
+
+        if len(error_text) > 1500:
+            error_text = error_text[:1500]
+
         await loading.edit_text(
-            "❌ હાલમાં AI જવાબ આપવામાં સમસ્યા આવી છે.\n\n"
-            "થોડીવાર પછી ફરી પ્રયાસ કરો."
+            "❌ AI જવાબ આપવામાં સમસ્યા આવી.\n\n"
+            "🔧 Error:\n"
+            + error_text
         )
 
 
@@ -204,8 +263,8 @@ async def error_handler(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    logger.error(
-        "Telegram error:",
+    logger.exception(
+        "Telegram bot error:",
         exc_info=context.error
     )
 
@@ -221,6 +280,10 @@ def main():
         target=run_web,
         daemon=True
     ).start()
+
+    logger.info(
+        "Starting Vartman Pravah AI Bot..."
+    )
 
     # Telegram application
     application = (
@@ -244,7 +307,7 @@ def main():
         )
     )
 
-    # Normal messages
+    # Normal text messages
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -257,18 +320,18 @@ def main():
         error_handler
     )
 
-    print(
-        "🇮🇳 Vartman Pravah AI Bot is running..."
+    logger.info(
+        "Vartman Pravah AI Bot is running..."
     )
 
-    # Start Telegram bot
+    # Start Telegram polling
     application.run_polling(
         allowed_updates=Update.ALL_TYPES
     )
 
 
 # =========================================================
-# START
+# RUN
 # =========================================================
 
 if __name__ == "__main__":

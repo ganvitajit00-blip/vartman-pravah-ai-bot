@@ -14,25 +14,22 @@ from telegram.ext import (
     filters,
 )
 
-# =====================================================
-# RENDER WEB SERVER
-# =====================================================
 
-server = Flask(__name__)
+# ============================================================
+# LOGGING
+# ============================================================
 
-@server.route("/")
-def home():
-    return "Vartman Pravah AI Bot is Live! ✅"
+logging.basicConfig(
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO
+)
 
-
-def run_web():
-    port = int(os.environ.get("PORT", 8080))
-    server.run(host="0.0.0.0", port=port)
+logger = logging.getLogger(__name__)
 
 
-# =====================================================
+# ============================================================
 # ENVIRONMENT VARIABLES
-# =====================================================
+# ============================================================
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
@@ -44,183 +41,210 @@ if not GEMINI_API_KEY:
     raise RuntimeError("GEMINI_API_KEY is missing")
 
 
-# =====================================================
-# GEMINI CLIENT
-# =====================================================
+# ============================================================
+# GEMINI AI
+# ============================================================
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+gemini_client = genai.Client(api_key=GEMINI_API_KEY)
 
-
-# =====================================================
-# LOGGING
-# =====================================================
-
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-)
+MODEL_NAME = "gemini-2.5-flash"
 
 
-# =====================================================
-# START
-# =====================================================
+# ============================================================
+# RENDER WEB SERVER
+# ============================================================
+
+server = Flask(__name__)
+
+
+@server.route("/")
+def home():
+    return "Vartman Pravah AI Bot is running successfully!"
+
+
+@server.route("/health")
+def health():
+    return "OK"
+
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    server.run(
+        host="0.0.0.0",
+        port=port
+    )
+
+
+# ============================================================
+# START COMMAND
+# ============================================================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     message = (
-        "નમસ્તે! 👋\n\n"
-        "🇮🇳 વર્તમાન પ્રવાહ AI Bot માં આપનું સ્વાગત છે.\n\n"
-        "હવે તમે મને Current Affairs, General Knowledge "
-        "અથવા કોઈપણ સામાન્ય પ્રશ્ન પૂછી શકો છો.\n\n"
+        "નમસ્તે 🙏\n\n"
+        "વર્તમાન પ્રવાહ AI Bot માં આપનું સ્વાગત છે. 🤖\n\n"
+        "તમે ગુજરાતીમાં કોઈપણ પ્રશ્ન પૂછી શકો છો.\n\n"
         "ઉદાહરણ:\n"
-        "• આજના Current Affairs આપો\n"
-        "• ગુજરાતના આજના સમાચાર આપો\n"
-        "• ભારતના મહત્વના સમાચાર આપો\n"
-        "• RBIના તાજેતરના સમાચાર આપો\n"
-        "• GPSC માટે Current Affairs આપો\n\n"
-        "📚 પરીક્ષાર્થીઓ માટે સરળ ગુજરાતીમાં જવાબ મળશે."
+        "• ગુજરાતના આજના સમાચાર\n"
+        "• આજના 5 મહત્વના સમાચાર\n"
+        "• સામાન્ય જ્ઞાનનો પ્રશ્ન\n"
+        "• બંધારણ વિશે માહિતી\n"
+        "• Current Affairs\n"
+        "• પરીક્ષા માટે MCQ\n\n"
+        "તમારો પ્રશ્ન મોકલો 👇"
     )
 
     await update.message.reply_text(message)
 
 
-# =====================================================
-# HELP
-# =====================================================
+# ============================================================
+# HELP COMMAND
+# ============================================================
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     message = (
-        "📚 મદદ\n\n"
-        "તમે સીધો પ્રશ્ન મોકલી શકો છો.\n\n"
-        "ઉદાહરણ:\n"
-        "👉 આજના 10 Current Affairs આપો\n"
-        "👉 ગુજરાતના આજના મહત્વના સમાચાર આપો\n"
-        "👉 UPSC માટે આજના Current Affairs આપો\n"
-        "👉 GPSC માટે 10 MCQ આપો\n"
-        "👉 ભારતના રાષ્ટ્રીય સમાચાર આપો\n"
+        "🤖 Vartman Pravah AI Bot\n\n"
+        "આ Botમાં તમે ગુજરાતીમાં પ્રશ્નો પૂછી શકો છો.\n\n"
+        "Commands:\n"
+        "/start - Bot શરૂ કરો\n"
+        "/help - મદદ\n\n"
+        "સામાન્ય રીતે પ્રશ્ન લખીને મોકલો."
     )
 
     await update.message.reply_text(message)
 
 
-# =====================================================
-# AI RESPONSE
-# =====================================================
+# ============================================================
+# GEMINI RESPONSE
+# ============================================================
 
-async def answer_question(
+async def ask_gemini(question: str):
+
+    system_instruction = """
+તમે 'વર્તમાન પ્રવાહ' નામના ગુજરાતી Current Affairs અને General Knowledge
+Telegram Bot માટે AI સહાયક છો.
+
+હંમેશા સરળ અને સ્પષ્ટ ગુજરાતીમાં જવાબ આપો.
+
+જો પ્રશ્ન Current Affairs અથવા સમાચાર અંગે હોય તો:
+- જવાબમાં તારીખ સ્પષ્ટ લખો.
+- માહિતી ઉપલબ્ધ ન હોય તો ખોટી માહિતી બનાવશો નહીં.
+- ખાતરી ન હોય ત્યારે સ્પષ્ટ કહો કે માહિતી ચકાસવી જરૂરી છે.
+
+જો user પરીક્ષા માટે પ્રશ્ન પૂછે તો:
+- ગુજરાતી માધ્યમના વિદ્યાર્થીઓને અનુકૂળ જવાબ આપો.
+- જરૂરી હોય ત્યારે MCQ format આપો.
+- જવાબ અને ટૂંકી સમજૂતી આપો.
+
+જો user Englishમાં પ્રશ્ન પૂછે તો પણ શક્ય હોય ત્યાં સુધી
+ગુજરાતીમાં જવાબ આપો.
+
+જવાબ ટૂંકો, ઉપયોગી અને Telegram માટે યોગ્ય રાખો.
+"""
+
+    prompt = f"""
+{system_instruction}
+
+User Question:
+{question}
+"""
+
+    response = gemini_client.models.generate_content(
+        model=MODEL_NAME,
+        contents=prompt
+    )
+
+    if response.text:
+        return response.text
+
+    return "માફ કરશો, હાલમાં જવાબ મળી શક્યો નથી."
+
+
+# ============================================================
+# MESSAGE HANDLER
+# ============================================================
+
+async def handle_message(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE
 ):
+
+    if not update.message or not update.message.text:
+        return
 
     question = update.message.text.strip()
 
     if not question:
         return
 
-    loading = await update.message.reply_text(
-        "🔎 જવાબ તૈયાર કરી રહ્યો છું... થોડી ક્ષણ રાહ જુઓ."
-    )
-
     try:
 
-        system_prompt = """
-તમે 'વર્તમાન પ્રવાહ' નામના ગુજરાતી Current Affairs
-અને General Knowledge AI Bot છો.
+        # Typing indicator
+        await update.message.chat.send_action("typing")
 
-તમારું કામ પરીક્ષાર્થીઓને ઉપયોગી થાય તે રીતે
-સરળ, સ્પષ્ટ અને મુદ્દાસર ગુજરાતીમાં જવાબ આપવાનું છે.
-
-જવાબ આપતી વખતે:
-
-1. ગુજરાતીમાં જવાબ આપો.
-2. જરૂરી હોય ત્યાં મુદ્દાવાર માહિતી આપો.
-3. Current Affairs માટે તારીખ સ્પષ્ટ લખો.
-4. જો માહિતી ચોક્કસ ન હોય તો ખોટી માહિતી ન બનાવો.
-5. પરીક્ષાર્થીઓ માટે મહત્વના facts અલગથી દર્શાવો.
-6. જરૂરી હોય ત્યારે MCQ પણ બનાવી શકો છો.
-"""
-
-        prompt = (
-            system_prompt
-            + "\n\nયુઝરનો પ્રશ્ન:\n"
-            + question
+        answer = await __import__("asyncio").to_thread(
+            ask_gemini,
+            question
         )
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash-lite",
-            contents=prompt
-        )
-
-        answer = response.text
-
-        if not answer:
-            answer = "માફ કરશો, હાલમાં જવાબ મેળવી શકાયો નથી."
-
-        # Telegram message limit
+        # Telegram message limit protection
         max_length = 4000
 
         if len(answer) <= max_length:
 
-            await loading.edit_text(answer)
+            await update.message.reply_text(answer)
 
         else:
 
-            await loading.edit_text(
-                answer[:max_length]
-            )
+            for i in range(0, len(answer), max_length):
 
-            remaining = answer[max_length:]
+                part = answer[i:i + max_length]
 
-            while remaining:
-
-                chunk = remaining[:4000]
-                remaining = remaining[4000:]
-
-                await update.message.reply_text(chunk)
+                await update.message.reply_text(part)
 
     except Exception as e:
 
-        logging.exception(
-            "Gemini API Error"
-        )
+        logger.exception("Gemini error: %s", e)
 
         error_message = (
-            "❌ AI જવાબ આપવામાં સમસ્યા આવી.\n\n"
-            "થોડીવાર પછી ફરી પ્રયાસ કરો."
+            "❌ હાલમાં AI જવાબ આપવામાં સમસ્યા આવી છે.\n\n"
+            "થોડા સમય પછી ફરી પ્રયાસ કરો."
         )
 
-        await loading.edit_text(error_message)
+        await update.message.reply_text(error_message)
 
 
-# =====================================================
+# ============================================================
 # ERROR HANDLER
-# =====================================================
+# ============================================================
 
 async def error_handler(
     update: object,
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    logging.error(
-        "Exception while handling update:",
+    logger.exception(
+        "Telegram error:",
         exc_info=context.error
     )
 
 
-# =====================================================
+# ============================================================
 # MAIN
-# =====================================================
+# ============================================================
 
 def main():
 
-    # Start Render web server
+    # Render web server
     Thread(
         target=run_web,
         daemon=True
     ).start()
 
-    # Telegram application
+    logger.info("Starting Vartman Pravah AI Bot...")
+
     application = (
         Application.builder()
         .token(TELEGRAM_BOT_TOKEN)
@@ -236,31 +260,28 @@ def main():
         CommandHandler("help", help_command)
     )
 
-    # Normal messages
+    # Normal text messages
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
-            answer_question
+            handle_message
         )
     )
 
     # Error handler
-    application.add_error_handler(
-        error_handler
-    )
+    application.add_error_handler(error_handler)
 
-    print(
-        "🇮🇳 Vartman Pravah AI Bot is running..."
-    )
+    logger.info("Bot started successfully!")
 
+    # Start Telegram polling
     application.run_polling(
-        allowed_updates=Update.ALL_TYPES
+        drop_pending_updates=True
     )
 
 
-# =====================================================
-# START BOT
-# =====================================================
+# ============================================================
+# RUN
+# ============================================================
 
 if __name__ == "__main__":
     main()

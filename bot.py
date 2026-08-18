@@ -1,3 +1,6 @@
+from threading import Thread
+from flask import Flask
+
 import os
 import logging
 from openai import AsyncOpenAI
@@ -34,7 +37,16 @@ logging.basicConfig(
 # START COMMAND
 # -----------------------------
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+server = Flask(__name__)
+
+@server.route('/')
+def home():
+    return "Bot is Live!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    server.run(host="0.0.0.0", port=port)
+(update: Update, context: ContextTypes.DEFAULT_TYPE):
     message = (
         "નમસ્તે! 👋\n\n"
         "વર્તમાન પ્રવાહ AI Bot માં આપનું સ્વાગત છે. 🇮🇳\n\n"

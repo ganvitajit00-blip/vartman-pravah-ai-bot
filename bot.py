@@ -1,11 +1,13 @@
 import os
 import logging
+import asyncio
 from threading import Thread
 
 from flask import Flask
 from google import genai
 
 from telegram import Update
+from telegram.constants import ChatAction
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -45,7 +47,9 @@ if not GEMINI_API_KEY:
 # GEMINI AI
 # ============================================================
 
-gemini_client = genai.Client(api_key=GEMINI_API_KEY)
+gemini_client = genai.Client(
+    api_key=GEMINI_API_KEY
+)
 
 MODEL_NAME = "gemini-2.5-flash"
 
@@ -69,6 +73,7 @@ def health():
 
 def run_web():
     port = int(os.environ.get("PORT", 10000))
+
     server.run(
         host="0.0.0.0",
         port=port
@@ -79,7 +84,10 @@ def run_web():
 # START COMMAND
 # ============================================================
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     message = (
         "નમસ્તે 🙏\n\n"
@@ -95,14 +103,18 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "તમારો પ્રશ્ન મોકલો 👇"
     )
 
-    await update.message.reply_text(message)
+    if update.message:
+        await update.message.reply_text(message)
 
 
 # ============================================================
 # HELP COMMAND
 # ============================================================
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def help_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE
+):
 
     message = (
         "🤖 Vartman Pravah AI Bot\n\n"
@@ -113,35 +125,46 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "સામાન્ય રીતે પ્રશ્ન લખીને મોકલો."
     )
 
-    await update.message.reply_text(message)
+    if update.message:
+        await update.message.reply_text(message)
 
 
 # ============================================================
 # GEMINI RESPONSE
 # ============================================================
+# IMPORTANT:
+# This function is intentionally NORMAL "def", not "async def".
+# It is executed inside asyncio.to_thread() below.
+# ============================================================
 
-async def ask_gemini(question: str):
+def ask_gemini(question: str):
 
     system_instruction = """
 તમે 'વર્તમાન પ્રવાહ' નામના ગુજરાતી Current Affairs અને General Knowledge
 Telegram Bot માટે AI સહાયક છો.
 
-હંમેશા સરળ અને સ્પષ્ટ ગુજરાતીમાં જવાબ આપો.
+હંમેશા સરળ, સ્પષ્ટ અને સમજાય તેવી ગુજરાતીમાં જવાબ આપો.
 
-જો પ્રશ્ન Current Affairs અથવા સમાચાર અંગે હોય તો:
-- જવાબમાં તારીખ સ્પષ્ટ લખો.
-- માહિતી ઉપલબ્ધ ન હોય તો ખોટી માહિતી બનાવશો નહીં.
-- ખાતરી ન હોય ત્યારે સ્પષ્ટ કહો કે માહિતી ચકાસવી જરૂરી છે.
+નિયમો:
 
-જો user પરીક્ષા માટે પ્રશ્ન પૂછે તો:
-- ગુજરાતી માધ્યમના વિદ્યાર્થીઓને અનુકૂળ જવાબ આપો.
-- જરૂરી હોય ત્યારે MCQ format આપો.
-- જવાબ અને ટૂંકી સમજૂતી આપો.
+1. સામાન્ય પ્રશ્ન હોય તો સીધો અને સાચો જવાબ આપો.
 
-જો user Englishમાં પ્રશ્ન પૂછે તો પણ શક્ય હોય ત્યાં સુધી
-ગુજરાતીમાં જવાબ આપો.
+2. Current Affairs અથવા સમાચાર અંગે પ્રશ્ન હોય તો:
+   - જવાબમાં તારીખ સ્પષ્ટ લખો.
+   - માહિતીની ખાતરી ન હોય તો ખોટી માહિતી બનાવશો નહીં.
+   - જરૂરી હોય ત્યારે કહો કે માહિતી ચકાસવી જરૂરી છે.
 
-જવાબ ટૂંકો, ઉપયોગી અને Telegram માટે યોગ્ય રાખો.
+3. પરીક્ષા સંબંધિત પ્રશ્ન હોય તો:
+   - ગુજરાતી માધ્યમના વિદ્યાર્થીઓને અનુકૂળ જવાબ આપો.
+   - જરૂરી હોય ત્યારે MCQ format આપો.
+   - સાચો જવાબ અને ટૂંકી સમજૂતી આપો.
+
+4. User Englishમાં પ્રશ્ન પૂછે તો પણ શક્ય હોય ત્યાં સુધી
+   ગુજરાતીમાં જવાબ આપો.
+
+5. જવાબ ટૂંકો, ઉપયોગી અને Telegram માટે યોગ્ય રાખો.
+
+6. કોઈ માહિતી ખબર ન હોય તો અંદાજથી ખોટો જવાબ ન આપો.
 """
 
     prompt = f"""
@@ -156,8 +179,8 @@ User Question:
         contents=prompt
     )
 
-    if response.text:
-        return response.text
+    if response and response.text:
+        return response.text.strip()
 
     return "માફ કરશો, હાલમાં જવાબ મળી શક્યો નથી."
 
@@ -171,7 +194,10 @@ async def handle_message(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    if not update.message or not update.message.text:
+    if not update.message:
+        return
+
+    if not update.message.text:
         return
 
     question = update.message.text.strip()
@@ -182,38 +208,59 @@ async def handle_message(
     try:
 
         # Typing indicator
-        await update.message.chat.send_action("typing")
+        await update.message.chat.send_action(
+            action=ChatAction.TYPING
+        )
 
-        answer = await __import__("asyncio").to_thread(
+        # Run synchronous Gemini request in background thread
+        answer = await asyncio.to_thread(
             ask_gemini,
             question
         )
+
+        if not answer:
+            answer = "માફ કરશો, હાલમાં જવાબ મળી શક્યો નથી."
 
         # Telegram message limit protection
         max_length = 4000
 
         if len(answer) <= max_length:
 
-            await update.message.reply_text(answer)
+            await update.message.reply_text(
+                answer
+            )
 
         else:
 
-            for i in range(0, len(answer), max_length):
+            for i in range(
+                0,
+                len(answer),
+                max_length
+            ):
 
-                part = answer[i:i + max_length]
+                part = answer[
+                    i:i + max_length
+                ]
 
-                await update.message.reply_text(part)
+                await update.message.reply_text(
+                    part
+                )
 
     except Exception as e:
 
-        logger.exception("Gemini error: %s", e)
+        logger.exception(
+            "Gemini error: %s",
+            e
+        )
 
         error_message = (
             "❌ હાલમાં AI જવાબ આપવામાં સમસ્યા આવી છે.\n\n"
             "થોડા સમય પછી ફરી પ્રયાસ કરો."
         )
 
-        await update.message.reply_text(error_message)
+        await update.message.reply_text(
+            error_message
+        )
 
 
 # ============================================================
@@ -225,8 +272,9 @@ async def error_handler(
     context: ContextTypes.DEFAULT_TYPE
 ):
 
-    logger.exception(
-        "Telegram error:",
+    logger.error(
+        "Telegram error: %s",
+        context.error,
         exc_info=context.error
     )
 
@@ -237,13 +285,22 @@ async def error_handler(
 
 def main():
 
-    # Render web server
+    # --------------------------------------------------------
+    # Start Render web server
+    # --------------------------------------------------------
+
     Thread(
         target=run_web,
         daemon=True
     ).start()
 
-    logger.info("Starting Vartman Pravah AI Bot...")
+    logger.info(
+        "Starting Vartman Pravah AI Bot..."
+    )
+
+    # --------------------------------------------------------
+    # Telegram Application
+    # --------------------------------------------------------
 
     application = (
         Application.builder()
@@ -251,16 +308,28 @@ def main():
         .build()
     )
 
+    # --------------------------------------------------------
     # Commands
+    # --------------------------------------------------------
+
     application.add_handler(
-        CommandHandler("start", start)
+        CommandHandler(
+            "start",
+            start
+        )
     )
 
     application.add_handler(
-        CommandHandler("help", help_command)
+        CommandHandler(
+            "help",
+            help_command
+        )
     )
 
+    # --------------------------------------------------------
     # Normal text messages
+    # --------------------------------------------------------
+
     application.add_handler(
         MessageHandler(
             filters.TEXT & ~filters.COMMAND,
@@ -268,12 +337,22 @@ def main():
         )
     )
 
+    # --------------------------------------------------------
     # Error handler
-    application.add_error_handler(error_handler)
+    # --------------------------------------------------------
 
-    logger.info("Bot started successfully!")
+    application.add_error_handler(
+        error_handler
+    )
 
+    logger.info(
+        "Bot started successfully!"
+    )
+
+    # --------------------------------------------------------
     # Start Telegram polling
+    # --------------------------------------------------------
+
     application.run_polling(
         drop_pending_updates=True
     )

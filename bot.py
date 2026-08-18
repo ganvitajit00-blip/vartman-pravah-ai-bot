@@ -57,7 +57,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "• ગુજરાતના આજના સમાચાર આપો\n"
         "• આજે ભારતના મહત્વના સમાચાર કયા છે?\n"
         "• RBIના તાજેતરના સમાચાર આપો\n\n"
-        "હું શક્ય હોય ત્યાં તાજી માહિતી શોધીને જવાબ આપીશ. 🔎"
+        "હું શક્ય હોય ત્યાં સચોટ માહિતી આપીશ. 🔎"
     )
     await update.message.reply_text(message)
 
@@ -90,43 +90,20 @@ async def answer_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        instructions = """
-તમે 'વર્તમાન પ્રવાહ' નામના ગુજરાતી Current Affairs Telegram Bot છો.
-
-તમારું મુખ્ય કામ:
-1. તાજા Current Affairs અને સમાચાર અંગે સચોટ જવાબ આપવો.
-2. જરૂરી હોય ત્યારે web search નો ઉપયોગ કરવો.
-3. જવાબ મુખ્યત્વે ગુજરાતી ભાષામાં આપવો.
-4. પરીક્ષાર્થીઓ માટે સરળ અને ઉપયોગી ભાષા રાખવી.
-5. તારીખ, વ્યક્તિ, સ્થળ અને આંકડા અંગે ખાસ કાળજી રાખવી.
-6. જો માહિતી તાજી હોય તો વિશ્વસનીય sources પર આધાર રાખવો.
-7. જવાબના અંતે 'સ્રોતો' વિભાગ આપવો.
-8. ખોટી માહિતી બનાવવી નહીં.
-9. જો કોઈ માહિતીની ખાતરી ન હોય તો સ્પષ્ટપણે જણાવવું.
-
-Current Affairs પ્રશ્ન હોય તો શક્ય હોય ત્યાં:
-• ઘટના
-• તારીખ
-• સ્થળ
-• સંબંધિત વ્યક્તિ/સંસ્થા
-• પરીક્ષા માટે મહત્વ
-આપો.
-
-જવાબ ટૂંકો પરંતુ ઉપયોગી રાખો.
-"""
-
-        response = await client.responses.create(
-            model="gpt-5.5",
-            instructions=instructions,
-            tools=[
-                {
-                    "type": "web_search"
-                }
-            ],
-            input=question,
+        system_prompt = (
+            "તમે 'વર્તમાન પ્રવાહ' નામના ગુજરાતી Current Affairs અને General Knowledge Bot છો. "
+            "પરીક્ષાર્થીઓને ઉપયોગી થાય તે રીતે ગુજરાતીમાં સચોટ, સ્પષ્ટ અને મુદ્દાસર જવાબ આપો."
         )
 
-        answer = response.output_text
+        response = await client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": question}
+            ]
+        )
+
+        answer = response.choices[0].message.content
 
         if not answer:
             answer = "માફ કરશો, હાલમાં જવાબ મેળવી શકાયો નથી."
@@ -146,7 +123,7 @@ Current Affairs પ્રશ્ન હોય તો શક્ય હોય ત�
         logging.exception("Error while processing question")
         await loading.edit_text(
             "❌ હાલમાં જવાબ મેળવવામાં સમસ્યા આવી છે.\n\n"
-            "થોડીવાર પછી ફરી પ્રયાસ કરો."
+            "કૃપા કરીને ખાતરી કરો કે OpenAI API Key સક્રિય છે."
         )
 
 # -----------------------------
@@ -162,7 +139,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 # MAIN
 # -----------------------------
 def main():
-    # Render માટે બેકગ્રાઉન્ડમાં વેબ સર્વર રન કરવું
     Thread(target=run_web).start()
 
     application = (

@@ -14,7 +14,16 @@ from telegram.ext import (
 )
 
 # -----------------------------
-# server = Flask(__name__)
+server = Flask(__name__)
+
+@server.route('/')
+def home():
+    return "Bot is Live!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    server.run(host="0.0.0.0", port=port)
+
 
 @server.route('/')
 def home():
@@ -204,6 +213,7 @@ def main():
     application.add_handler(
         CommandHandler("help", help_command)
     )
+    Thread(target=run_web).start()
 
     application.add_handler(
         MessageHandler(
